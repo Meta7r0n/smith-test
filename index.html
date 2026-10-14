@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>3D Blacksmith Forge - V3.2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        html, body { 
+            width: 100%; 
+            height: 100%; 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+            background-color: #111; 
+            touch-action: none; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+        }
+        canvas { 
+            display: block; 
+            width: 100% !important; 
+            height: 100% !important; 
+            outline: none; 
+        }
+        .glass-panel { 
+            background: rgba(35, 40, 50, 0.95); 
+            backdrop-filter: blur(10px); 
+            border: 1px solid rgba(255, 255, 255, 0.25); 
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6); 
+        }
+        .progress-bar { 
+            transition: width 0.2s ease-out; 
+        }
+        #instructions { 
+            animation: fadeOut 5s forwards; 
+            animation-delay: 4s; 
+        }
+        @keyframes fadeOut { 
+            to { opacity: 0; visibility: hidden; } 
+        }
+        * { 
+            user-select: none; 
+            -webkit-user-select: none; 
+        }
+        
+        /* Custom scrollbar for menus on smaller mobile screens */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 4px; }
+    </style>
+</head>
+<body class="text-white">
+
+    <div id="game-container" class="absolute inset-0 z-0"></div>
+
+    <div id="ui-layer" class="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between">
+        
+        <!-- HUD for Forging -->
+        <div id="hud-forge" class="hidden p-2 sm:p-4 flex w-full justify-center gap-2 sm:gap-4 pointer-events-auto transition-opacity">
+            <div class="glass-panel p-2 sm:p-3 rounded-xl flex-1 max-w-[160px]">
+                <div class="text-[10px] sm:text-xs text-gray-200 font-bold uppercase tracking-wider mb-1 text-center truncate">Temperature</div>
+                <div class="h-3 sm:h-4 bg-gray-700 rounded-full overflow-hidden relative">
+                    <div id="temp-bar" class="h-full bg-blue-500 progress-bar w-0"></div>
+                    <div class="absolute top-0 bottom-0 left-[50%] w-[1px] bg-white opacity-60 z-20"></div>
+                    <div class="absolute top-0 bottom-0 left-[85%] w-[1px] bg-red-400 opacity-90 z-20"></div>
+                </div>
+                <div id="temp-status" class="text-[10px] sm:text-xs text-center mt-1 text-blue-300">Cold</div>
+            </div>
+
+            <div class="glass-panel p-2 sm:p-3 rounded-xl flex-1 max-w-[160px]">
+                <div id="progress-title" class="text-[10px] sm:text-xs text-gray-200 font-bold uppercase tracking-wider mb-1 text-center truncate">Flattening</div>
+                <div class="h-3 sm:h-4 bg-gray-700 rounded-full overflow-hidden">
+                    <div id="progress-bar" class="h-full bg-yellow-500 progress-bar w-0"></div>
+                </div>
+                <div id="progress-text" class="text-[10px] sm:text-xs text-center mt-1 text-gray-200">0%</div>
+            </div>
+        </div>
+
+        <!-- HUD for Assembly -->
+        <div id="hud-assembly" class="hidden p-4 flex w-full justify-center pointer-events-auto">
+            <div class="glass-panel px-6 py-3 rounded-2xl border-t-4 border-blue-400 shadow-xl max-w-md w-full">
+                <div id="assembly-instruction" class="text-xs sm:text-sm font-bold text-blue-300 text-center uppercase tracking-wider">
+                    Tap block to saw in half
+                </div>
+                <div class="h-2.5 w-full bg-gray-700 rounded-full mt-2 overflow-hidden">
+                    <div id="assembly-progress" class="h-full bg-blue-500 progress-bar w-0"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- HUD for Showcase -->
+        <div id="hud-showcase" class="hidden absolute bottom-8 left-0 right-0 flex justify-center pointer-events-auto px-4">
+            <div class="glass-panel p-6 rounded-2xl text-center border-t-4 border-green-500 shadow-2xl max-w-sm w-full">
+                <div class="text-xs uppercase tracking-widest text-gray-400 mb-1">Finished Masterpiece</div>
+                <h3 id="showcase-weapon-name" class="text-xl font-black text-green-400 mb-4">Weapon Name</h3>
+                <button id="btn-exit-showcase" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg transform transition active:scale-95">
+                    Return to Hub
+                </button>
+            </div>
+        </div>
+
+        <!-- Floating Instructions -->
+        <div id="instructions" class="hidden absolute top-24 w-full px-4 text-center pointer-events-none">
+            <div class="inline-block glass-panel px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm text-yellow-300 shadow-lg">
+                Hold/Drag metal into fire. Heat to <span class="text-orange-400 font-bold">ORANGE</span>. Drag to anvil & tap!
+            </div>
+        </div>
+
+        <div id="hub-menu" class="absolute inset-0 flex items-center justify-center pointer-events-auto bg-black bg-opacity-75 backdrop-blur-md p-4">
+            <div class="glass-panel p-5 sm:p-7 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto flex flex-col gap-5">
+                
+                <div class="text-center border-b border-gray-700 pb-3">
+                    <h1 class="text-2xl sm:text-3xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-red-500 to-yellow-500">3D BLACKSMITH FORGE</h1>
+                    <p class="text-xs text-gray-400 mt-0.5">Craft, Shape, Assemble & Inspect</p>
+                </div>
+
+                <div class="flex flex-col md:flex-row gap-5 w-full">
+                    <!-- Forge Section (Restored Hammer & Anvil selections!) -->
+                    <div class="flex-1 border border-gray-600 rounded-xl p-4 bg-gray-800 bg-opacity-50 flex flex-col justify-between">
+                        <div>
+                            <h2 class="text-xl font-black mb-3 text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-500">1. FORGE BLADE</h2>
+                            <div class="space-y-2.5">
+                                <div>
+                                    <label class="block text-[10px] text-gray-400 uppercase tracking-wider mb-1">Metal & Weapon Size</label>
+                                    <div class="flex gap-2">
+                                        <select id="metal-select" class="w-1/2 bg-gray-900 border border-gray-600 rounded-lg p-2 text-white text-xs focus:border-orange-500 focus:outline-none">
+                                            <option value="iron">Iron (Balanced)</option>
+                                            <option value="steel">Steel (Strong)</option>
+                                            <option value="gold">Gold (Soft/Fast)</option>
+                                        </select>
+                                        <select id="size-select" class="w-1/2 bg-gray-900 border border-gray-600 rounded-lg p-2 text-white text-xs focus:border-orange-500 focus:outline-none">
+                                            <option value="dagger">Dagger (S)</option>
+                                            <option value="sword" selected>Sword (M)</option>
+                                            <option value="greatsword">Greatsword (L)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-[10px] text-gray-400 uppercase tracking-wider mb-1">Smithing Tools</label>
+                                    <div class="flex gap-2">
+                                        <select id="hammer-select" class="w-1/2 bg-gray-900 border border-gray-600 rounded-lg p-2 text-white text-xs focus:border-orange-500 focus:outline-none">
+                                            <option value="standard">Standard Hammer</option>
+                                            <option value="heavy">Heavy Hammer (2x)</option>
+                                        </select>
+                                        <select id="anvil-select" class="w-1/2 bg-gray-900 border border-gray-600 rounded-lg p-2 text-white text-xs focus:border-orange-500 focus:outline-none">
+                                            <option value="iron">Iron Anvil</option>
+                                            <option value="stone">Stone Block</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <button id="btn-start-forge" class="w-full mt-4 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold py-2.5 rounded-xl shadow-lg transform transition active:scale-95 text-sm">
+                            Ignite Forge
+                        </button>
+                    </div>
+
+                    <!-- Assembly Workbench Section -->
+                    <div class="flex-1 border border-gray-600 rounded-xl p-4 bg-gray-800 bg-opacity-50 flex flex-col justify-between">
+                        <h2 class="text-xl font-black mb-3 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-teal-400">2. WORKBENCH</h2>
+                        
+                        <div id="assembly-options" class="space-y-2.5 flex-1 flex flex-col justify-between">
+                            <div class="space-y-2.5">
+                                <div>
+                                    <label class="block text-[10px] text-gray-400 uppercase tracking-wider mb-1">Select Forged Blade</label>
+                                    <select id="blade-inventory-select" class="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-white text-xs focus:border-blue-500 focus:outline-none">
+                                        <!-- Populated dynamically -->
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-gray-400 uppercase tracking-wider mb-1">Handle Material</label>
+                                    <select id="handle-select" class="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-white text-xs focus:border-blue-500 focus:outline-none">
+                                        <option value="oak">Oak Wood</option>
+                                        <option value="walnut">Dark Walnut</option>
+                                        <option value="ebony">Ebony Wood</option>
+                                        <option value="bone">Monster Bone</option>
+                                        <option value="micarta">Green Micarta</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button id="btn-start-assembly" class="w-full mt-4 bg-gradient-to-r from-blue-600 to-teal-600 hover:from-blue-500 hover:to-teal-500 text-white font-bold py-2.5 rounded-xl shadow-lg transform transition active:scale-95 text-sm">
+                                Assemble Weapon
+                            </button>
+                        </div>
+                        
+                        <div id="empty-inventory-msg" class="hidden flex-1 flex items-center justify-center text-center text-gray-400 italic text-xs py-6">
+                            No raw blades in inventory.<br>Forge a blade first!
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Arsenal Section -->
+                <div class="border border-green-600 border-opacity-60 rounded-xl p-4 bg-gray-800 bg-opacity-50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div class="text-left w-full sm:w-auto">
+                        <h2 class="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-400">3. ARSENAL SHOWCASE</h2>
+                        <p class="text-xs text-gray-400">Inspect your finished weapons in 3D</p>
+                    </div>
+                    <div id="arsenal-options" class="flex-1 flex gap-2 w-full sm:w-auto hidden">
+                        <select id="finished-inventory-select" class="flex-1 bg-gray-900 border border-gray-600 rounded-lg p-2 text-white text-xs focus:border-green-500 focus:outline-none">
+                            <!-- Populated dynamically -->
+                        </select>
+                        <button id="btn-view-weapon" class="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold py-2 px-5 rounded-xl shadow-lg transform transition active:scale-95 text-xs whitespace-nowrap">
+                            Inspect
+                        </button>
+                    </div>
+                    <div id="empty-arsenal-msg" class="w-full sm:w-auto text-center sm:text-right text-gray-400 italic text-xs">
+                        No finished weapons yet.
+                    </div>
+                </div>
+
+                <!-- Quick Inventory Footer -->
+                <div class="border-t border-gray-700 pt-3 flex justify-center gap-6 text-xs">
+                    <span class="text-gray-400">Unfinished Blades: <span id="inventory-count" class="font-bold text-orange-400">0</span></span>
+                    <span class="text-gray-400">Completed Masterpieces: <span id="finished-count" class="font-bold text-green-400">0</span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- End Screen -->
+        <div id="end-screen" class="hidden absolute inset-0 flex items-end justify-center pointer-events-auto bg-black bg-opacity-20 pb-10 sm:pb-16">
+            <div class="glass-panel p-6 sm:p-8 rounded-2xl text-center max-w-sm w-full mx-4 border-t-4 shadow-2xl transition-colors duration-500" id="end-panel">
+                <h2 id="end-title" class="text-3xl sm:text-4xl font-black mb-2">Masterpiece!</h2>
+                <p id="end-message" class="text-gray-200 text-sm mb-6">You have forged a fine weapon.</p>
+                <button id="btn-return" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg transform transition active:scale-95">
+                    Return to Hub
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        /**
+         * 3D BLACKSMITH GAME - V3.2 (Audited & Consolidated)
+         * Complete crafting loop: Dual-phase forging -> Handle assembly minigame -> 3D Arsenal Showcase
+         */
+
+        const GAME_STATE = {
+            phase: 'MENU', // MENU, PLAYING, ASSEMBLING, END, SHOWCASE
+            
+            // Forging State
+            forgingPhase: 'FLATTENING', // FLATTENING, SHAPING
+            heat: 0,
+            flatteningProgress: 0,
+            shapingProgress: 0,
+            targetFlattening: 50,
+            targetShaping: 50,
+            currentMetal: 'iron',
+            currentSize: 'sword',
+            currentHammer: 'standard',
+            currentAnvil: 'iron',
+            isDragging: false,
+            isOnAnvil: false,
+            isInForge: false,
+            
+            // Assembly State
+            assemblyStep: 'SPLIT', // SPLIT, MIX, GLUE, CLAMP, DONE
+            assemblyProgress: 0,
+            activeBladeIndex: -1,
+            handleMaterial: 'oak',
+            
+            // Inventory System
+            inventory: [],         // Raw blades: { id, metal, size, name }
+            finishedInventory: [], // Completed weapons: { id, metal, size, handle, name }
+            
+            // Interaction Planes
+            dragPlaneNormal: new THREE.Vector3(0, 1, 0),
+            dragPlane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -2),
+            
+            // Physical Parameters
+            metalParams: {
+                iron:  { color: 0x666666, heatRate: 0.15, coolRate: 0.05, hardness: 1.0 },
+                steel: { color: 0x3a3f44, heatRate: 0.09, coolRate: 0.03, hardness: 0.65 },
+                gold:  { color: 0xffaa00, heatRate: 0.28, coolRate: 0.12, hardness: 1.8 }
+            },
+            handleParams: {
+                oak:     { color: 0x8b5a2b, name: "Oak" },
+                walnut:  { color: 0x4a3728, name: "Walnut" },
+                ebony:   { color: 0x1e1e1e, name: "Ebony" },
+                bone:    { color: 0xdcdcba, name: "Bone" },
+                micarta: { color: 0x2f4f4f, name: "Micarta" }
+            }
+        };
+
+        const FORGE_POS = new THREE.Vector3(-3.5, 2, -2);
+        const ANVIL_POS = new THREE.Vector3(2.5, 2, 2);
+        const FORGE_RADIUS = 3.5;
+        const ANVIL_RADIUS = 2.5;
+
+        const container = document.getElementById('game-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a0a);
+        scene.fog = new THREE.Fog(0x0a0a0a, 10, 40);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 18, 18);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); 
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x555566, 2.5);
+        scene.add(ambientLight);
+
+        const moonLight = new THREE.DirectionalLight(0x99aabb, 1.5);
+        moonLight.position.set(10, 20, 10);
+        moonLight.castShadow = true;
+        scene.add(moonLight);
+
+        const fireLight = new THREE.PointLight(0xff4400, 0, 12);
+        fireLight.position.copy(FORGE_POS);
+        fireLight.castShadow = true;
+        scene.add(fireLight);
+
+        let ingotMesh, hammerMesh, anvilGroup, forgeGroup;
+        let woodBlockMesh, woodScale1, woodScale2;
+        let epoxyA, epoxyB, epoxyMix;
+        const glueBlobs = [];
+        const sparks = [];
+
+        const ingotMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.4, metalness: 0.8, emissive: 0x000000 });
+        const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.9, metalness: 0.0 });
+        const epoxyMat = new THREE.MeshStandardMaterial({ color: 0x3388ff, transparent: true, opacity: 0.85, roughness: 0.1 });
+
+        function buildEnvironment() {
+            // Floor
+            const floor = new THREE.Mesh(
+                new THREE.PlaneGeometry(50, 50),
+                new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 })
+            );
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // Open-Front Forge Hearth
+            forgeGroup = new THREE.Group();
+            const brickMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8 });
+            
+            const forgeBase = new THREE.Mesh(new THREE.BoxGeometry(5, 4, 5), brickMat);
+            forgeBase.position.set(0, 2, 0); 
+            forgeBase.castShadow = true;
+            forgeBase.receiveShadow = true;
+            forgeGroup.add(forgeBase);
+
+            const firePit = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.4, 3.5), new THREE.MeshBasicMaterial({ color: 0xff3300 }));
+            firePit.position.set(0, 4.2, 0); 
+            forgeGroup.add(firePit);
+            
+            const backWall = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 1), brickMat);
+            backWall.position.set(0, 6.5, -2); 
+            backWall.castShadow = true;
+            forgeGroup.add(backWall);
+
+            const leftWall = new THREE.Mesh(new THREE.BoxGeometry(1, 5, 4), brickMat);
+            leftWall.position.set(-2, 6.5, 0.5); 
+            leftWall.castShadow = true;
+            forgeGroup.add(leftWall);
+
+            const rightWall = new THREE.Mesh(new THREE.BoxGeometry(1, 5, 4), brickMat);
+            rightWall.position.set(2, 6.5, 0.5); 
+            rightWall.castShadow = true;
+            forgeGroup.add(rightWall);
+
+            const roof = new THREE.Mesh(new THREE.BoxGeometry(5, 1, 5), brickMat);
+            roof.position.set(0, 9.5, 0); 
+            roof.castShadow = true;
+            forgeGroup.add(roof);
+
+            const chimney = new THREE.Mesh(new THREE.BoxGeometry(2, 6, 2), brickMat);
+            chimney.position.set(0, 13, -1);
+            chimney.castShadow = true;
+            forgeGroup.add(chimney);
+
+            forgeGroup.position.copy(FORGE_POS);
+            forgeGroup.position.y = -2; 
+            forgeGroup.rotation.y = Math.PI / 8;
+            scene.add(forgeGroup);
+
+            buildAnvil('iron');
+        }
+
+        function buildAnvil(type = 'iron') {
+            if (anvilGroup) scene.remove(anvilGroup);
+            anvilGroup = new THREE.Group();
+            
+            const mat = new THREE.MeshStandardMaterial({ 
+                color: type === 'iron' ? 0x222222 : 0x555555, 
+                roughness: 0.6, 
+                metalness: type === 'iron' ? 0.7 : 0.1 
+            });
+
+            if (type === 'iron') {
+                const base = new THREE.Mesh(new THREE.BoxGeometry(2, 1.5, 2), mat);
+                base.position.y = 0.75;
+                base.castShadow = true;
+                base.receiveShadow = true;
+                anvilGroup.add(base);
+                
+                const top = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.8, 1.8), mat);
+                top.position.y = 1.9;
+                top.castShadow = true;
+                top.receiveShadow = true;
+                anvilGroup.add(top);
+
+                const horn = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.5, 16), mat);
+                horn.rotation.z = -Math.PI / 2;
+                horn.position.set(2.2, 1.9, 0);
+                horn.castShadow = true;
+                anvilGroup.add(horn);
+            } else {
+                const block = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.3, 2.4), mat);
+                block.position.y = 1.15;
+                block.castShadow = true;
+                block.receiveShadow = true;
+                anvilGroup.add(block);
+            }
+
+            anvilGroup.position.copy(ANVIL_POS);
+            anvilGroup.position.y = 0;
+            scene.add(anvilGroup);
+        }
+
+        function buildHammer() {
+            if (hammerMesh) scene.remove(hammerMesh);
+            hammerMesh = new THREE.Group();
+            
+            const handle = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.1, 0.1, 2), 
+                new THREE.MeshStandardMaterial({ color: 0x4a3728 })
+            );
+            handle.position.y = 1;
+            hammerMesh.add(handle);
+
+            const headSize = GAME_STATE.currentHammer === 'heavy' ? [1.2, 0.6, 0.6] : [0.8, 0.4, 0.4];
+            const head = new THREE.Mesh(
+                new THREE.BoxGeometry(...headSize), 
+                new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8 })
+            );
+            head.position.y = 2;
+            head.rotation.z = Math.PI / 2;
+            hammerMesh.add(head);
+
+            hammerMesh.position.copy(ANVIL_POS);
+            hammerMesh.position.y = 2.5;
+            hammerMesh.position.x += 1;
+            hammerMesh.rotation.z = Math.PI / 4;
+            hammerMesh.visible = false;
+            scene.add(hammerMesh);
+        }
+
+        function createIngot(metal, size, fullShape = false) {
+            if (ingotMesh) scene.remove(ingotMesh);
+            
+            // Sync currentMetal so updateIngotColor renders the accurate metal color in all modes
+            GAME_STATE.currentMetal = metal;
+            GAME_STATE.currentSize = size;
+
+            const sizeMap = { 'dagger': 0.8, 'sword': 1.2, 'greatsword': 1.8 };
+            const scale = sizeMap[size];
+            
+            const geo = new THREE.BoxGeometry(0.8 * scale, 0.8 * scale, 0.8 * scale, 8, 2, 4);
+            
+            const color = GAME_STATE.metalParams[metal].color;
+            ingotMat.color.setHex(color);
+            ingotMat.emissive.setHex(0x000000);
+            
+            ingotMesh = new THREE.Mesh(geo, ingotMat);
+            ingotMesh.position.copy(ANVIL_POS);
+            ingotMesh.position.y = 2.5; 
+            ingotMesh.castShadow = true;
+            ingotMesh.receiveShadow = true;
+            
+            const positions = geo.attributes.position.array;
+            const originalVertices = new Float32Array(positions.length);
+            originalVertices.set(positions);
+
+            ingotMesh.userData = { 
+                isIngot: true,
+                originalVertices: originalVertices,
+                scaleMap: scale,
+                sizeType: size
+            };
+            scene.add(ingotMesh);
+
+            if (fullShape) {
+                const maxScaleX = size === 'greatsword' ? 3.5 : (size === 'sword' ? 2.5 : 1.5);
+                ingotMesh.scale.set(maxScaleX, 0.15, 0.4);
+                
+                GAME_STATE.shapingProgress = 1; 
+                GAME_STATE.targetShaping = 1;
+                applyShapingDeformation();
+            }
+        }
+
+        function clearAssemblyItems() {
+            if (woodBlockMesh) { scene.remove(woodBlockMesh); woodBlockMesh = null; }
+            if (woodScale1) { scene.remove(woodScale1); woodScale1 = null; }
+            if (woodScale2) { scene.remove(woodScale2); woodScale2 = null; }
+            if (epoxyA) { scene.remove(epoxyA); epoxyA = null; }
+            if (epoxyB) { scene.remove(epoxyB); epoxyB = null; }
+            if (epoxyMix) { scene.remove(epoxyMix); epoxyMix = null; }
+            glueBlobs.forEach(b => scene.remove(b));
+            glueBlobs.length = 0;
+        }
+
+        function setupAssemblyPhase() {
+            clearAssemblyItems();
+            
+            const blade = GAME_STATE.inventory[GAME_STATE.activeBladeIndex];
+            
+            createIngot(blade.metal, blade.size, true);
+            ingotMesh.position.set(ANVIL_POS.x, 2.35, ANVIL_POS.z);
+            ingotMesh.rotation.set(0, 0, 0);
+            
+            woodMat.color.setHex(GAME_STATE.handleParams[GAME_STATE.handleMaterial].color);
+
+            const wGeo = new THREE.BoxGeometry(1.2, 0.4, 0.5);
+            woodBlockMesh = new THREE.Mesh(wGeo, woodMat);
+            woodBlockMesh.position.set(ANVIL_POS.x, 2.6, ANVIL_POS.z + 1);
+            woodBlockMesh.castShadow = true;
+            woodBlockMesh.userData = { isWood: true };
+            scene.add(woodBlockMesh);
+
+            fireLight.intensity = 0;
+            GAME_STATE.heat = 0;
+            updateIngotColor();
+            
+            GAME_STATE.assemblyStep = 'SPLIT';
+            GAME_STATE.assemblyProgress = 0;
+            updateAssemblyHUD("Tap the wood block repeatedly to saw in half");
+        }
+
+        function advanceAssemblyStep() {
+            GAME_STATE.assemblyProgress = 0;
+
+            if (GAME_STATE.assemblyStep === 'SPLIT') {
+                GAME_STATE.assemblyStep = 'MIX';
+                
+                scene.remove(woodBlockMesh);
+                const scaleGeo = new THREE.BoxGeometry(1.2, 0.15, 0.5);
+                
+                woodScale1 = new THREE.Mesh(scaleGeo, woodMat);
+                woodScale1.position.set(ANVIL_POS.x - 0.7, 2.45, ANVIL_POS.z + 1);
+                woodScale1.castShadow = true;
+                scene.add(woodScale1);
+
+                woodScale2 = new THREE.Mesh(scaleGeo, woodMat);
+                woodScale2.position.set(ANVIL_POS.x + 0.7, 2.45, ANVIL_POS.z + 1);
+                woodScale2.castShadow = true;
+                scene.add(woodScale2);
+
+                epoxyA = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.05, 16), new THREE.MeshStandardMaterial({color: 0x3388ff}));
+                epoxyA.position.set(ANVIL_POS.x - 0.3, 2.4, ANVIL_POS.z - 0.5);
+                scene.add(epoxyA);
+
+                epoxyB = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.05, 16), new THREE.MeshStandardMaterial({color: 0xffff33}));
+                epoxyB.position.set(ANVIL_POS.x + 0.3, 2.4, ANVIL_POS.z - 0.5);
+                scene.add(epoxyB);
+
+                updateAssemblyHUD("Swirl finger/mouse over the liquids to mix epoxy");
+
+            } else if (GAME_STATE.assemblyStep === 'MIX') {
+                GAME_STATE.assemblyStep = 'GLUE';
+                
+                scene.remove(epoxyA);
+                scene.remove(epoxyB);
+                
+                epoxyMat.color.setHex(0xddffdd);
+                epoxyMix = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.06, 16), epoxyMat);
+                epoxyMix.position.set(ANVIL_POS.x, 2.4, ANVIL_POS.z - 0.5);
+                scene.add(epoxyMix);
+
+                updateAssemblyHUD("Tap the left side of the blade (the tang) to apply glue");
+
+            } else if (GAME_STATE.assemblyStep === 'GLUE') {
+                GAME_STATE.assemblyStep = 'CLAMP';
+                updateAssemblyHUD("Tap either wood scale to attach and clamp");
+
+            } else if (GAME_STATE.assemblyStep === 'CLAMP') {
+                GAME_STATE.assemblyStep = 'DONE';
+                
+                const tangX = ANVIL_POS.x - (0.8 * ingotMesh.userData.scaleMap * ingotMesh.scale.x * 0.4);
+                const offset = tangX - ANVIL_POS.x;
+                
+                woodScale1.userData.offsetX = offset;
+                woodScale2.userData.offsetX = offset;
+                
+                scene.remove(epoxyMix);
+                glueBlobs.forEach(b => scene.remove(b));
+                glueBlobs.length = 0;
+
+                // Lift weapon for showcase
+                ingotMesh.position.set(ANVIL_POS.x, 4, ANVIL_POS.z);
+                ingotMesh.rotation.set(0, 0, 0);
+                woodScale1.position.set(tangX, 4.06, ANVIL_POS.z);
+                woodScale2.position.set(tangX, 3.94, ANVIL_POS.z);
+
+                endGame("Assembly Complete!", "Your completed masterpiece has been added to your Arsenal.", "border-blue-500", "text-blue-400");
+            }
+        }
+
+        function setupShowcasePhase(index) {
+            clearAssemblyItems();
+            
+            const weapon = GAME_STATE.finishedInventory[index];
+            
+            createIngot(weapon.metal, weapon.size, true);
+            ingotMesh.position.set(ANVIL_POS.x, 4, ANVIL_POS.z);
+            ingotMesh.rotation.set(0, 0, 0); 
+            
+            woodMat.color.setHex(GAME_STATE.handleParams[weapon.handle].color);
+            const scaleGeo = new THREE.BoxGeometry(1.2, 0.15, 0.5);
+            
+            woodScale1 = new THREE.Mesh(scaleGeo, woodMat);
+            woodScale2 = new THREE.Mesh(scaleGeo, woodMat);
+            woodScale1.castShadow = true;
+            woodScale2.castShadow = true;
+            
+            scene.add(woodScale1);
+            scene.add(woodScale2);
+            
+            const tangX = ANVIL_POS.x - (0.8 * ingotMesh.userData.scaleMap * ingotMesh.scale.x * 0.4);
+            const offset = tangX - ANVIL_POS.x;
+            
+            woodScale1.userData.offsetX = offset;
+            woodScale2.userData.offsetX = offset;
+            
+            woodScale1.position.set(tangX, 4.06, ANVIL_POS.z);
+            woodScale2.position.set(tangX, 3.94, ANVIL_POS.z);
+            
+            fireLight.intensity = 0;
+            GAME_STATE.heat = 0;
+            updateIngotColor();
+            
+            const handleName = GAME_STATE.handleParams[weapon.handle].name;
+            document.getElementById('showcase-weapon-name').innerText = `${weapon.name} (${handleName} Grip)`;
+        }
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let dragOffset = new THREE.Vector3();
+        let isHammerAnimating = false;
+        let hammerAnimTime = 0;
+
+        let pointerState = { isDown: false, startX: 0, startY: 0, pickUpTimeout: null };
+
+        function getClientCoords(event) {
+            if (event.changedTouches && event.changedTouches.length > 0) {
+                return { x: event.changedTouches[0].clientX, y: event.changedTouches[0].clientY };
+            }
+            return { x: event.clientX, y: event.clientY };
+        }
+
+        function updateMouseVector(coords) {
+            mouse.x = (coords.x / window.innerWidth) * 2 - 1;
+            mouse.y = -(coords.y / window.innerHeight) * 2 + 1;
+        }
+
+        function beginForgeDrag() {
+            GAME_STATE.isDragging = true;
+            pointerState.isDown = false;
+            GAME_STATE.isInForge = false; 
+            GAME_STATE.isOnAnvil = false;
+            
+            ingotMesh.position.y = 3.5;
+            GAME_STATE.dragPlane.constant = -3.5;
+        }
+
+        function onPointerDown(event) {
+            const coords = getClientCoords(event);
+            updateMouseVector(coords);
+            raycaster.setFromCamera(mouse, camera);
+
+            if (GAME_STATE.phase === 'PLAYING') {
+                const intersects = raycaster.intersectObjects(scene.children, true);
+                let hitIngot = false;
+
+                for (let i = 0; i < intersects.length; i++) {
+                    if (intersects[i].object.userData.isIngot) {
+                        hitIngot = true;
+                        pointerState.isDown = true;
+                        pointerState.startX = coords.x;
+                        pointerState.startY = coords.y;
+                        
+                        raycaster.ray.intersectPlane(GAME_STATE.dragPlane, dragOffset);
+                        dragOffset.sub(ingotMesh.position);
+
+                        clearTimeout(pointerState.pickUpTimeout);
+                        pointerState.pickUpTimeout = setTimeout(() => {
+                            if (pointerState.isDown && !GAME_STATE.isDragging) beginForgeDrag();
+                        }, 150);
+                        break;
+                    }
+                }
+                
+                if (!hitIngot && GAME_STATE.isOnAnvil && !GAME_STATE.isDragging) {
+                     raycaster.ray.intersectPlane(GAME_STATE.dragPlane, dragOffset);
+                     if (dragOffset.distanceTo(ANVIL_POS) < 3) strikeAnvil();
+                }
+
+            } else if (GAME_STATE.phase === 'ASSEMBLING') {
+                const intersects = raycaster.intersectObjects(scene.children, true);
+                if (intersects.length === 0) return;
+
+                const hitObj = intersects[0].object;
+
+                if (GAME_STATE.assemblyStep === 'SPLIT' && hitObj === woodBlockMesh) {
+                    GAME_STATE.assemblyProgress += 20;
+                    woodBlockMesh.scale.y -= 0.1;
+                    woodBlockMesh.position.y -= 0.02;
+                    if (GAME_STATE.assemblyProgress >= 100) advanceAssemblyStep();
+                    updateAssemblyProgressHUD();
+                } 
+                else if (GAME_STATE.assemblyStep === 'GLUE' && hitObj === ingotMesh) {
+                    const hitX = intersects[0].point.x;
+                    if (hitX < ANVIL_POS.x + 0.2) {
+                        GAME_STATE.assemblyProgress += 34;
+                        
+                        const blob = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.02, 8), epoxyMat);
+                        blob.position.copy(intersects[0].point);
+                        blob.position.y = 2.45;
+                        scene.add(blob);
+                        glueBlobs.push(blob);
+
+                        if (GAME_STATE.assemblyProgress >= 100) advanceAssemblyStep();
+                        updateAssemblyProgressHUD();
+                    }
+                }
+                else if (GAME_STATE.assemblyStep === 'CLAMP' && (hitObj === woodScale1 || hitObj === woodScale2)) {
+                    GAME_STATE.assemblyProgress += 100;
+                    advanceAssemblyStep();
+                }
+            }
+        }
+
+        function onPointerMove(event) {
+            const coords = getClientCoords(event);
+            updateMouseVector(coords);
+
+            if (GAME_STATE.phase === 'PLAYING') {
+                if (pointerState.isDown && !GAME_STATE.isDragging) {
+                    const dx = coords.x - pointerState.startX;
+                    const dy = coords.y - pointerState.startY;
+                    if (Math.sqrt(dx*dx + dy*dy) > 5) {
+                        clearTimeout(pointerState.pickUpTimeout);
+                        beginForgeDrag();
+                    }
+                }
+
+                if (GAME_STATE.isDragging) {
+                    raycaster.setFromCamera(mouse, camera);
+                    let intersection = new THREE.Vector3();
+                    if (raycaster.ray.intersectPlane(GAME_STATE.dragPlane, intersection)) {
+                        ingotMesh.position.copy(intersection.sub(dragOffset));
+                        ingotMesh.position.x = Math.max(-10, Math.min(10, ingotMesh.position.x));
+                        ingotMesh.position.z = Math.max(-10, Math.min(10, ingotMesh.position.z));
+                    }
+                }
+            } else if (GAME_STATE.phase === 'ASSEMBLING' && GAME_STATE.assemblyStep === 'MIX') {
+                raycaster.setFromCamera(mouse, camera);
+                if (epoxyA && epoxyB) {
+                    const intersects = raycaster.intersectObjects([epoxyA, epoxyB], false);
+                    if (intersects.length > 0) {
+                        GAME_STATE.assemblyProgress += 2.5;
+                        
+                        const ratio = Math.min(1, GAME_STATE.assemblyProgress / 100);
+                        epoxyA.position.x = (ANVIL_POS.x - 0.3) + (0.3 * ratio);
+                        epoxyB.position.x = (ANVIL_POS.x + 0.3) - (0.3 * ratio);
+
+                        if (GAME_STATE.assemblyProgress >= 100) advanceAssemblyStep();
+                        updateAssemblyProgressHUD();
+                    }
+                }
+            }
+        }
+
+        function onPointerUp() {
+            if (GAME_STATE.phase !== 'PLAYING') return;
+
+            clearTimeout(pointerState.pickUpTimeout);
+
+            if (pointerState.isDown && !GAME_STATE.isDragging) {
+                pointerState.isDown = false;
+                if (GAME_STATE.isOnAnvil) strikeAnvil();
+            }
+
+            if (GAME_STATE.isDragging) {
+                GAME_STATE.isDragging = false;
+                const distToAnvil = ingotMesh.position.distanceTo(new THREE.Vector3(ANVIL_POS.x, ingotMesh.position.y, ANVIL_POS.z));
+                const distToForge = ingotMesh.position.distanceTo(new THREE.Vector3(FORGE_POS.x, ingotMesh.position.y, FORGE_POS.z));
+
+                if (distToAnvil < ANVIL_RADIUS) {
+                    ingotMesh.position.set(ANVIL_POS.x, 2.5, ANVIL_POS.z);
+                    GAME_STATE.isOnAnvil = true;
+                    GAME_STATE.isInForge = false;
+                } else if (distToForge < FORGE_RADIUS) {
+                    ingotMesh.position.set(FORGE_POS.x, 2.5, FORGE_POS.z);
+                    GAME_STATE.isInForge = true;
+                    GAME_STATE.isOnAnvil = false;
+                } else {
+                    ingotMesh.position.y = 0.5;
+                    GAME_STATE.isOnAnvil = false;
+                    GAME_STATE.isInForge = false;
+                }
+                GAME_STATE.dragPlane.constant = -ingotMesh.position.y;
+            }
+        }
+
+        window.addEventListener('pointerdown', onPointerDown);
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+
+        function createSpark(pos) {
+            const geo = new THREE.BoxGeometry(0.05, 0.05, 0.05);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+            const spark = new THREE.Mesh(geo, mat);
+            spark.position.copy(pos);
+            const vx = (Math.random() - 0.5) * 0.3;
+            const vy = Math.random() * 0.3 + 0.1;
+            const vz = (Math.random() - 0.5) * 0.3;
+            scene.add(spark);
+            sparks.push({ mesh: spark, v: new THREE.Vector3(vx, vy, vz), life: 1.0 });
+        }
+
+        function applyShapingDeformation() {
+            const positions = ingotMesh.geometry.attributes.position;
+            const orig = ingotMesh.userData.originalVertices;
+            const scaleMap = ingotMesh.userData.scaleMap;
+            const w = 0.8 * scaleMap;
+            const d = 0.8 * scaleMap;
+            
+            let ratio = Math.min(1, GAME_STATE.shapingProgress / GAME_STATE.targetShaping);
+
+            for (let i = 0; i < positions.count; i++) {
+                let ox = orig[i*3], oy = orig[i*3 + 1], oz = orig[i*3 + 2];
+                let nx = ox, ny = oy, nz = oz;
+
+                // Tang compression (left side)
+                if (ox < -w * 0.1) {
+                    nz = oz * 0.3; 
+                    ny = oy * 0.8; 
+                }
+                // Pointed tip taper (right side)
+                else if (ox > w * 0.1) {
+                    let t = (ox - w * 0.1) / (w * 0.4); 
+                    t = Math.min(1, Math.max(0, t));
+                    nz = oz * (1 - t); 
+                }
+
+                // Knife edge bevel (front side)
+                if (oz > 0 && ox >= -w * 0.1) {
+                    let t_edge = oz / (d / 2);
+                    ny = oy * (1 - t_edge * 0.9);
+                }
+
+                positions.setXYZ(i, ox + (nx - ox) * ratio, oy + (ny - oy) * ratio, oz + (nz - oz) * ratio);
+            }
+            positions.needsUpdate = true;
+            ingotMesh.geometry.computeVertexNormals(); 
+        }
+
+        function strikeAnvil() {
+            if (isHammerAnimating) return;
+            
+            isHammerAnimating = true;
+            hammerAnimTime = 0;
+            hammerMesh.visible = true;
+            hammerMesh.position.set(ingotMesh.position.x + 1, ingotMesh.position.y + 1, ingotMesh.position.z);
+
+            if (GAME_STATE.heat > 50 && GAME_STATE.heat < 85) {
+                const metalData = GAME_STATE.metalParams[GAME_STATE.currentMetal];
+                const power = GAME_STATE.currentHammer === 'heavy' ? 8 : 4;
+                const progressGain = power * metalData.hardness;
+                
+                if (GAME_STATE.forgingPhase === 'FLATTENING') {
+                    GAME_STATE.flatteningProgress += progressGain;
+                    let flatRatio = Math.min(1, GAME_STATE.flatteningProgress / GAME_STATE.targetFlattening);
+                    
+                    const maxScaleX = GAME_STATE.currentSize === 'greatsword' ? 3.5 : (GAME_STATE.currentSize === 'sword' ? 2.5 : 1.5);
+                    ingotMesh.scale.y = 1.0 - (1.0 - 0.15) * flatRatio;
+                    ingotMesh.scale.x = 1.0 + (maxScaleX - 1.0) * flatRatio;
+                    ingotMesh.scale.z = 1.0 - (1.0 - 0.4) * flatRatio;
+                    
+                    if (GAME_STATE.flatteningProgress >= GAME_STATE.targetFlattening) {
+                        GAME_STATE.forgingPhase = 'SHAPING';
+                    }
+                } else if (GAME_STATE.forgingPhase === 'SHAPING') {
+                    GAME_STATE.shapingProgress += progressGain;
+                    applyShapingDeformation();
+
+                    if (GAME_STATE.shapingProgress >= GAME_STATE.targetShaping) {
+                        const id = Date.now();
+                        const weaponName = `${GAME_STATE.currentMetal.charAt(0).toUpperCase() + GAME_STATE.currentMetal.slice(1)} ${GAME_STATE.currentSize.charAt(0).toUpperCase() + GAME_STATE.currentSize.slice(1)}`;
+                        GAME_STATE.inventory.push({
+                            id: id,
+                            metal: GAME_STATE.currentMetal,
+                            size: GAME_STATE.currentSize,
+                            name: weaponName
+                        });
+                        
+                        endGame("Blade Forged!", "Stored in your inventory. Head to the Workbench to craft and attach a handle!", "border-orange-500", "text-orange-400");
+                        
+                        ingotMesh.position.set(ANVIL_POS.x, ANVIL_POS.y + 1.5, ANVIL_POS.z);
+                        ingotMesh.rotation.set(0, 0, 0);
+                    }
+                }
+                
+                for(let i=0; i<10; i++) createSpark(ingotMesh.position);
+                updateForgeHUD();
+            } else if (GAME_STATE.heat >= 85) {
+                 if (GAME_STATE.forgingPhase === 'SHAPING') GAME_STATE.shapingProgress = Math.max(0, GAME_STATE.shapingProgress - 5);
+                 else GAME_STATE.flatteningProgress = Math.max(0, GAME_STATE.flatteningProgress - 5);
+                 
+                 updateForgeHUD();
+                 for(let i=0; i<5; i++) {
+                     createSpark(ingotMesh.position);
+                     sparks[sparks.length-1].mesh.material.color.setHex(0xff0000);
+                 }
+            } else {
+                 for(let i=0; i<3; i++) {
+                     createSpark(ingotMesh.position);
+                     sparks[sparks.length-1].mesh.material.color.setHex(0xaaaaaa);
+                 }
+            }
+        }
+
+        function updateGameLogic() {
+            if (GAME_STATE.phase === 'END' || GAME_STATE.phase === 'SHOWCASE') {
+                if (ingotMesh) {
+                    ingotMesh.rotation.y += 0.015;
+                    if (woodScale1 && typeof woodScale1.userData.offsetX !== 'undefined') {
+                        const offset = woodScale1.userData.offsetX;
+                        
+                        woodScale1.rotation.y = ingotMesh.rotation.y;
+                        woodScale1.position.x = ingotMesh.position.x + Math.cos(ingotMesh.rotation.y) * offset;
+                        woodScale1.position.z = ingotMesh.position.z - Math.sin(ingotMesh.rotation.y) * offset;
+                        
+                        woodScale2.rotation.y = ingotMesh.rotation.y;
+                        woodScale2.position.x = ingotMesh.position.x + Math.cos(ingotMesh.rotation.y) * offset;
+                        woodScale2.position.z = ingotMesh.position.z - Math.sin(ingotMesh.rotation.y) * offset;
+                    }
+                    GAME_STATE.heat = Math.max(0, GAME_STATE.heat - 0.25); 
+                    updateIngotColor();
+                }
+            } else if (GAME_STATE.phase === 'PLAYING') {
+                const metalData = GAME_STATE.metalParams[GAME_STATE.currentMetal];
+
+                if (GAME_STATE.isInForge) {
+                    GAME_STATE.heat = Math.min(100, GAME_STATE.heat + metalData.heatRate);
+                    fireLight.intensity = 2 + Math.random(); 
+                } else {
+                    GAME_STATE.heat = Math.max(0, GAME_STATE.heat - metalData.coolRate);
+                    fireLight.intensity = 0;
+                }
+
+                updateIngotColor();
+                updateForgeHUDTemperature();
+
+                if (isHammerAnimating) {
+                    hammerAnimTime += 0.2;
+                    if (hammerAnimTime < Math.PI) {
+                        hammerMesh.rotation.z = Math.PI/4 - Math.sin(hammerAnimTime) * (Math.PI/2);
+                    } else {
+                        isHammerAnimating = false;
+                        hammerMesh.visible = false;
+                        hammerMesh.rotation.z = Math.PI/4;
+                    }
+                }
+            }
+
+            for (let i = sparks.length - 1; i >= 0; i--) {
+                let s = sparks[i];
+                s.mesh.position.add(s.v);
+                s.v.y -= 0.01; 
+                s.life -= 0.05;
+                if (s.life <= 0) {
+                    scene.remove(s.mesh);
+                    sparks.splice(i, 1);
+                }
+            }
+        }
+
+        function updateIngotColor() {
+            if (!ingotMesh) return;
+            const baseColor = new THREE.Color(GAME_STATE.metalParams[GAME_STATE.currentMetal].color);
+            const redColor = new THREE.Color(0xaa0000);
+            const orangeColor = new THREE.Color(0xffaa00);
+            const whiteColor = new THREE.Color(0xffffff);
+
+            let newColor = new THREE.Color(), emColor = new THREE.Color(0x000000);
+
+            if (GAME_STATE.heat < 30) newColor.copy(baseColor);
+            else if (GAME_STATE.heat < 60) {
+                const t = (GAME_STATE.heat - 30) / 30;
+                newColor.lerpColors(baseColor, redColor, t);
+                emColor.lerpColors(new THREE.Color(0x000000), new THREE.Color(0x330000), t);
+            } else if (GAME_STATE.heat < 85) {
+                const t = (GAME_STATE.heat - 60) / 25;
+                newColor.lerpColors(redColor, orangeColor, t);
+                emColor.lerpColors(new THREE.Color(0x330000), new THREE.Color(0xcc4400), t);
+            } else {
+                const t = (GAME_STATE.heat - 85) / 15;
+                newColor.lerpColors(orangeColor, whiteColor, t);
+                emColor.lerpColors(new THREE.Color(0xcc4400), new THREE.Color(0xffff88), t);
+            }
+
+            ingotMat.color.copy(newColor);
+            ingotMat.emissive.copy(emColor);
+            ingotMat.needsUpdate = true;
+        }
+
+        // --- UI Updates ---
+        function updateForgeHUDTemperature() {
+            const tempBar = document.getElementById('temp-bar');
+            const tempStatus = document.getElementById('temp-status');
+            tempBar.style.width = `${GAME_STATE.heat}%`;
+            
+            if (GAME_STATE.heat < 40) {
+                tempBar.className = 'h-full progress-bar bg-blue-500';
+                tempStatus.innerText = 'Too Cold';
+                tempStatus.className = 'text-[10px] sm:text-xs text-center mt-1 text-blue-300';
+            } else if (GAME_STATE.heat < 50) {
+                tempBar.className = 'h-full progress-bar bg-yellow-500';
+                tempStatus.innerText = 'Warming';
+                tempStatus.className = 'text-[10px] sm:text-xs text-center mt-1 text-yellow-300';
+            } else if (GAME_STATE.heat < 85) {
+                tempBar.className = 'h-full progress-bar bg-orange-500 shadow-[0_0_10px_#f97316]';
+                tempStatus.innerText = 'Optimal (Strike!)';
+                tempStatus.className = 'text-[10px] sm:text-xs text-center mt-1 text-orange-400 font-bold';
+            } else {
+                tempBar.className = 'h-full progress-bar bg-red-100 shadow-[0_0_15px_#fff]';
+                tempStatus.innerText = 'OVERHEATED!';
+                tempStatus.className = 'text-[10px] sm:text-xs text-center mt-1 text-red-400 font-black animate-pulse';
+            }
+        }
+
+        function updateForgeHUD() {
+            const progressTitle = document.getElementById('progress-title');
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            
+            let p;
+            if (GAME_STATE.forgingPhase === 'FLATTENING') {
+                p = Math.min(100, Math.floor((GAME_STATE.flatteningProgress / GAME_STATE.targetFlattening) * 100));
+                progressTitle.innerText = "Flattening (1/2)";
+                progressBar.className = 'h-full bg-yellow-500 progress-bar';
+            } else {
+                p = Math.min(100, Math.floor((GAME_STATE.shapingProgress / GAME_STATE.targetShaping) * 100));
+                progressTitle.innerText = "Shaping Edge (2/2)";
+                progressBar.className = 'h-full bg-green-500 progress-bar';
+            }
+            
+            progressBar.style.width = `${p}%`;
+            progressText.innerText = `${p}%`;
+        }
+
+        function updateAssemblyHUD(instruction) {
+            document.getElementById('assembly-instruction').innerText = instruction;
+            updateAssemblyProgressHUD();
+        }
+
+        function updateAssemblyProgressHUD() {
+            const bar = document.getElementById('assembly-progress');
+            bar.style.width = `${Math.min(100, GAME_STATE.assemblyProgress)}%`;
+        }
+
+        function endGame(title, message, borderColorClass, titleColorClass) {
+            GAME_STATE.phase = 'END';
+            document.getElementById('hud-forge').classList.add('hidden');
+            document.getElementById('hud-assembly').classList.add('hidden');
+            
+            const endScreen = document.getElementById('end-screen');
+            const endPanel = document.getElementById('end-panel');
+            const endTitle = document.getElementById('end-title');
+            
+            endScreen.classList.remove('hidden');
+            endScreen.classList.add('flex');
+            
+            endPanel.className = `glass-panel p-6 sm:p-8 rounded-2xl text-center max-w-sm w-full mx-4 border-t-4 shadow-2xl transition-colors duration-500 ${borderColorClass}`;
+            endTitle.className = `text-3xl sm:text-4xl font-black mb-2 ${titleColorClass}`;
+            
+            endTitle.innerText = title;
+            document.getElementById('end-message').innerText = message;
+        }
+
+        function refreshHubMenu() {
+            document.getElementById('inventory-count').innerText = GAME_STATE.inventory.length;
+            document.getElementById('finished-count').innerText = GAME_STATE.finishedInventory.length;
+            
+            // Update Unfinished Blade Select Dropdown
+            const select = document.getElementById('blade-inventory-select');
+            select.innerHTML = '';
+            
+            if (GAME_STATE.inventory.length === 0) {
+                document.getElementById('assembly-options').classList.add('hidden');
+                document.getElementById('empty-inventory-msg').classList.remove('hidden');
+            } else {
+                document.getElementById('assembly-options').classList.remove('hidden');
+                document.getElementById('empty-inventory-msg').classList.add('hidden');
+                
+                GAME_STATE.inventory.forEach((item, index) => {
+                    const opt = document.createElement('option');
+                    opt.value = index;
+                    opt.innerText = item.name;
+                    select.appendChild(opt);
+                });
+            }
+            
+            // Update Arsenal Finished Dropdown
+            const arsenalSelect = document.getElementById('finished-inventory-select');
+            arsenalSelect.innerHTML = '';
+            
+            if (GAME_STATE.finishedInventory.length === 0) {
+                document.getElementById('arsenal-options').classList.add('hidden');
+                document.getElementById('empty-arsenal-msg').classList.remove('hidden');
+            } else {
+                document.getElementById('arsenal-options').classList.remove('hidden');
+                document.getElementById('empty-arsenal-msg').classList.add('hidden');
+                
+                GAME_STATE.finishedInventory.forEach((item, index) => {
+                    const opt = document.createElement('option');
+                    opt.value = index;
+                    const handleName = GAME_STATE.handleParams[item.handle].name;
+                    opt.innerText = `${item.name} (${handleName} Grip)`;
+                    arsenalSelect.appendChild(opt);
+                });
+            }
+            
+            document.getElementById('hub-menu').classList.remove('hidden');
+            document.getElementById('hub-menu').classList.add('flex');
+        }
+
+        // Event Listeners
+        document.getElementById('btn-start-forge').addEventListener('click', () => {
+            GAME_STATE.currentMetal = document.getElementById('metal-select').value;
+            GAME_STATE.currentSize = document.getElementById('size-select').value;
+            GAME_STATE.currentHammer = document.getElementById('hammer-select').value;
+            GAME_STATE.currentAnvil = document.getElementById('anvil-select').value;
+            
+            const sizeMult = GAME_STATE.currentSize === 'dagger' ? 100 : (GAME_STATE.currentSize === 'sword' ? 200 : 350);
+            GAME_STATE.targetFlattening = sizeMult / 2;
+            GAME_STATE.targetShaping = sizeMult / 2;
+            GAME_STATE.flatteningProgress = 0;
+            GAME_STATE.shapingProgress = 0;
+            GAME_STATE.forgingPhase = 'FLATTENING';
+            GAME_STATE.heat = 0;
+            GAME_STATE.isOnAnvil = true; 
+            GAME_STATE.isInForge = false;
+
+            clearAssemblyItems();
+            buildAnvil(GAME_STATE.currentAnvil);
+            createIngot(GAME_STATE.currentMetal, GAME_STATE.currentSize, false);
+            buildHammer();
+
+            document.getElementById('hub-menu').classList.add('hidden');
+            document.getElementById('hub-menu').classList.remove('flex');
+            document.getElementById('hud-forge').classList.remove('hidden');
+            document.getElementById('instructions').classList.remove('hidden');
+            
+            const inst = document.getElementById('instructions');
+            inst.style.animation = 'none';
+            inst.offsetHeight; 
+            inst.style.animation = null; 
+
+            updateForgeHUD();
+            GAME_STATE.phase = 'PLAYING';
+        });
+
+        document.getElementById('btn-start-assembly').addEventListener('click', () => {
+            if (GAME_STATE.inventory.length === 0) return;
+            GAME_STATE.activeBladeIndex = parseInt(document.getElementById('blade-inventory-select').value);
+            GAME_STATE.handleMaterial = document.getElementById('handle-select').value;
+
+            document.getElementById('hub-menu').classList.add('hidden');
+            document.getElementById('hub-menu').classList.remove('flex');
+            document.getElementById('hud-assembly').classList.remove('hidden');
+            
+            setupAssemblyPhase();
+            GAME_STATE.phase = 'ASSEMBLING';
+        });
+
+        document.getElementById('btn-return').addEventListener('click', () => {
+            document.getElementById('end-screen').classList.add('hidden');
+            document.getElementById('end-screen').classList.remove('flex');
+            
+            if (GAME_STATE.phase === 'END' && document.getElementById('end-title').innerText === "Assembly Complete!") {
+                 const finishedBlade = GAME_STATE.inventory.splice(GAME_STATE.activeBladeIndex, 1)[0];
+                 if (finishedBlade) {
+                     finishedBlade.handle = GAME_STATE.handleMaterial;
+                     GAME_STATE.finishedInventory.push(finishedBlade);
+                 }
+            }
+
+            sparks.forEach(s => scene.remove(s.mesh));
+            sparks.length = 0;
+            
+            refreshHubMenu();
+            GAME_STATE.phase = 'MENU';
+        });
+
+        document.getElementById('btn-view-weapon').addEventListener('click', () => {
+            if (GAME_STATE.finishedInventory.length === 0) return;
+            const index = parseInt(document.getElementById('finished-inventory-select').value);
+            
+            document.getElementById('hub-menu').classList.add('hidden');
+            document.getElementById('hub-menu').classList.remove('flex');
+            document.getElementById('hud-showcase').classList.remove('hidden');
+            
+            setupShowcasePhase(index);
+            GAME_STATE.phase = 'SHOWCASE';
+        });
+
+        document.getElementById('btn-exit-showcase').addEventListener('click', () => {
+            document.getElementById('hud-showcase').classList.add('hidden');
+            
+            clearAssemblyItems();
+            if (ingotMesh) {
+                scene.remove(ingotMesh);
+                ingotMesh = null;
+            }
+            
+            refreshHubMenu();
+            GAME_STATE.phase = 'MENU';
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updateGameLogic();
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function () {
+            buildEnvironment();
+            refreshHubMenu();
+            animate();
+        };
+    </script>
+</body>
+</html>
